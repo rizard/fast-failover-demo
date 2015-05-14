@@ -5,7 +5,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -20,9 +19,16 @@ import org.projectfloodlight.openflow.protocol.OFFlowDelete;
 import org.projectfloodlight.openflow.protocol.OFGroupAdd;
 import org.projectfloodlight.openflow.protocol.OFGroupDelete;
 import org.projectfloodlight.openflow.protocol.OFGroupType;
+import org.projectfloodlight.openflow.protocol.OFPortConfig;
 import org.projectfloodlight.openflow.protocol.OFPortDesc;
+import org.projectfloodlight.openflow.protocol.OFPortMod;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
 import org.projectfloodlight.openflow.protocol.match.MatchField;
+import org.projectfloodlight.openflow.protocol.ver10.OFPortConfigSerializerVer10;
+import org.projectfloodlight.openflow.protocol.ver11.OFPortConfigSerializerVer11;
+import org.projectfloodlight.openflow.protocol.ver12.OFPortConfigSerializerVer12;
+import org.projectfloodlight.openflow.protocol.ver13.OFPortConfigSerializerVer13;
+import org.projectfloodlight.openflow.protocol.ver14.OFPortConfigSerializerVer14;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.EthType;
 import org.projectfloodlight.openflow.types.OFGroup;
@@ -69,6 +75,12 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 	 * To more easily identify our flows, we will use a cookie.
 	 */
 	private static final U64 cookie = U64.ofRaw(0x11223344);
+	
+	/*
+	 * The path we're currently using. This will be used to determine
+	 * which set of ports to take up/down upon a toggle.
+	 */
+	private static boolean usingPath1 = true;
 
 	/*
 	 * We could come up with a complex way to detect the various paths and switches
@@ -334,6 +346,16 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		insertFlows();
 		message.put("test", "some string");
 
+		/*
+		 * Now, toggle the path.
+		 */
+		if (usingPath1) {
+			usePathA();
+			usingPath1 = !usingPath1;
+		} else {
+			usePathB();
+			usingPath1 = !usingPath1;
+		}
 
 		return message;
 	}
@@ -467,7 +489,8 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build())
 							.build();
 			sw2a.write(flowAdd);
-
+			
+			log.info("Inserted flows for switch {}", dpid2a.toString());
 			dpid2a_has_flows = true;
 		}
 
@@ -526,6 +549,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build();
 			sw2b.write(flowAdd);
 
+			log.info("Inserted flows for switch {}", dpid2b.toString());
 			dpid2b_has_flows = true;	
 		}
 
@@ -543,12 +567,11 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			sw1.write(groupDelete);
 
 			sendBarrier(sw1);
-			
+
 			/* Add the group: fast-failover watching ports leading to dpid2a and dpid2b */
 			ArrayList<OFBucket> buckets = new ArrayList<OFBucket>(2);
 			buckets.add(sw1.getOFFactory().buildBucket()
 					.setWatchPort(link_dpid1_to_dpid2a.getSrcPort())
-					.setWatchGroup(OFGroup.ZERO)
 					.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildOutput()
 							.setMaxLen(0xffFFffFF)
 							.setPort(link_dpid1_to_dpid2a.getSrcPort())
@@ -556,7 +579,6 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build());
 			buckets.add(sw1.getOFFactory().buildBucket()
 					.setWatchPort(link_dpid1_to_dpid2b.getSrcPort())
-					.setWatchGroup(OFGroup.ZERO)
 					.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildOutput()
 							.setMaxLen(0xffFFffFF)
 							.setPort(link_dpid1_to_dpid2b.getSrcPort())
@@ -614,7 +636,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build())
 							.build();
 			sw1.write(flowAdd);
-			
+
 			/* ARP and IPv4 from sw2b to host */
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw1.getOFFactory().buildMatch()
@@ -632,11 +654,112 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build();
 			sw1.write(flowAdd);
 
+			log.info("Inserted flows for switch {}", dpid1.toString());
 			dpid1_has_flows = true;
 		}
 
 		if (!dpid3_has_flows) {
+			IOFSwitch sw3 = switchService.getSwitch(dpid3);
+			OFFlowDelete flowDelete = sw3.getOFFactory().buildFlowDelete()
+					.setCookie(cookie)
+					.build();
+			sw3.write(flowDelete);
 
+			OFGroupDelete groupDelete = sw3.getOFFactory().buildGroupDelete()
+					.setGroup(OFGroup.ANY)
+					.setGroupType(OFGroupType.FF)
+					.build();
+			sw3.write(groupDelete);
+
+			sendBarrier(sw3);
+
+			/* Add the group: fast-failover watching ports leading to dpid2a and dpid2b */
+			ArrayList<OFBucket> buckets = new ArrayList<OFBucket>(2);
+			buckets.add(sw3.getOFFactory().buildBucket()
+					.setWatchPort(link_dpid2a_to_dpid3.getDstPort())
+					.setActions(Collections.singletonList((OFAction) sw3.getOFFactory().actions().buildOutput()
+							.setMaxLen(0xffFFffFF)
+							.setPort(link_dpid2a_to_dpid3.getDstPort())
+							.build()))
+							.build());
+			buckets.add(sw3.getOFFactory().buildBucket()
+					.setWatchPort(link_dpid2b_to_dpid3.getDstPort())
+					.setActions(Collections.singletonList((OFAction) sw3.getOFFactory().actions().buildOutput()
+							.setMaxLen(0xffFFffFF)
+							.setPort(link_dpid2b_to_dpid3.getDstPort())
+							.build()))
+							.build());
+			OFGroupAdd groupAdd = sw3.getOFFactory().buildGroupAdd()
+					.setGroup(OFGroup.of(1))
+					.setGroupType(OFGroupType.FF)
+					.setBuckets(buckets)
+					.build();
+			sw3.write(groupAdd);
+
+			/* ARP and IPv4 from sw3 to group1 */
+			OFFlowAdd flowAdd = sw3.getOFFactory().buildFlowAdd()
+					.setCookie(cookie)
+					.setHardTimeout(0)
+					.setIdleTimeout(0)
+					.setPriority(FlowModUtils.PRIORITY_MAX)
+					.setMatch(sw3.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.ARP)
+							.setExact(MatchField.IN_PORT, getHostPort(sw3))
+							.build())
+							.setActions(Collections.singletonList((OFAction) sw3.getOFFactory().actions().buildGroup()
+									.setGroup(OFGroup.of(1))
+									.build()))
+									.build();
+
+			sw3.write(flowAdd);
+
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw3.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+							.setExact(MatchField.IN_PORT, getHostPort(sw3))
+							.build())
+							.build();
+			sw3.write(flowAdd);
+
+			/* ARP and IPv4 from sw2a to host */
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw3.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.ARP)
+							.setExact(MatchField.IN_PORT, link_dpid2a_to_dpid3.getDstPort())
+							.build())
+							.setActions(Collections.singletonList((OFAction) sw3.getOFFactory().actions().buildOutput()
+									.setMaxLen(0xffFFffFF)
+									.setPort(getHostPort(sw3))
+									.build()))
+									.build();
+			sw3.write(flowAdd);
+
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw3.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+							.setExact(MatchField.IN_PORT, link_dpid2a_to_dpid3.getDstPort())
+							.build())
+							.build();
+			sw3.write(flowAdd);
+
+			/* ARP and IPv4 from sw2b to host */
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw3.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.ARP)
+							.setExact(MatchField.IN_PORT, link_dpid2b_to_dpid3.getDstPort())
+							.build())
+							.build();
+			sw3.write(flowAdd);
+
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw3.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+							.setExact(MatchField.IN_PORT, link_dpid2b_to_dpid3.getDstPort())
+							.build())
+							.build();
+			sw3.write(flowAdd);
+			
+			log.info("Inserted flows for switch {}", dpid3.toString());
 			dpid3_has_flows = true;
 		}
 
@@ -685,5 +808,101 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			log.error("We don't have a host on switch {}.", sw.getId().toString());
 			throw new IllegalArgumentException("Invalid switch for host. Switch=" + sw.getId().toString());
 		}
+	}
+
+	private long portDown(IOFSwitch sw) {
+		long config = 0;
+		switch (sw.getOFFactory().getVersion()) {
+		case OF_10:
+			config = OFPortConfigSerializerVer10.toWireValue(Collections.singleton(OFPortConfig.PORT_DOWN));
+			break;
+		case OF_11:
+			config = OFPortConfigSerializerVer11.toWireValue(Collections.singleton(OFPortConfig.PORT_DOWN));
+			break;
+		case OF_12:
+			config = OFPortConfigSerializerVer12.toWireValue(Collections.singleton(OFPortConfig.PORT_DOWN));
+			break;
+		case OF_13:
+			config = OFPortConfigSerializerVer13.toWireValue(Collections.singleton(OFPortConfig.PORT_DOWN));
+			break;
+		case OF_14:
+			config = OFPortConfigSerializerVer14.toWireValue(Collections.singleton(OFPortConfig.PORT_DOWN));
+			break;
+		default:
+			log.error("Bad OFVersion {}", sw.getOFFactory().getVersion().toString());
+			break;
+		}
+		
+		return config;
+	}
+
+	private void usePathA() {
+		/*
+		 * Take down path B ports at sw1 and sw3
+		 */
+		IOFSwitch sw = switchService.getSwitch(dpid1);
+		/* Set down */
+		OFPortMod portMod = sw.getOFFactory().buildPortMod()
+				.setPortNo(link_dpid1_to_dpid2b.getSrcPort())
+				.setConfig(portDown(sw))
+				.build();
+		sw.write(portMod);
+		/* Set up */
+		portMod = sw.getOFFactory().buildPortMod()
+				.setPortNo(link_dpid1_to_dpid2a.getSrcPort())
+				.setConfig(0)
+				.build();
+		sw.write(portMod);
+		
+		sw = switchService.getSwitch(dpid3);
+		/* Set down */
+		portMod = sw.getOFFactory().buildPortMod()
+				.setPortNo(link_dpid2b_to_dpid3.getDstPort())
+				.setConfig(portDown(sw))
+				.build();
+		sw.write(portMod);
+		/* Set up */
+		portMod = sw.getOFFactory().buildPortMod()
+				.setPortNo(link_dpid2a_to_dpid3.getDstPort())
+				.setConfig(0)
+				.build();
+		sw.write(portMod);
+		
+		log.info("Took down ports on path sw1--sw2b--sw3 and brought up ports on sw1--sw2a--sw3");
+	}
+
+	private void usePathB() {
+		/*
+		 * Take down path B ports at sw1 and sw3
+		 */
+		IOFSwitch sw = switchService.getSwitch(dpid1);
+		/* Set down */
+		OFPortMod portMod = sw.getOFFactory().buildPortMod()
+				.setPortNo(link_dpid1_to_dpid2a.getSrcPort())
+				.setConfig(portDown(sw))
+				.build();
+		sw.write(portMod);
+		/* Set up */
+		portMod = sw.getOFFactory().buildPortMod()
+				.setPortNo(link_dpid1_to_dpid2b.getSrcPort())
+				.setConfig(0)
+				.build();
+		sw.write(portMod);
+		
+		sw = switchService.getSwitch(dpid3);
+		/* Set down */
+		portMod = sw.getOFFactory().buildPortMod()
+				.setPortNo(link_dpid2a_to_dpid3.getDstPort())
+				.setConfig(portDown(sw))
+				.build();
+		sw.write(portMod);
+		/* Set up */
+		portMod = sw.getOFFactory().buildPortMod()
+				.setPortNo(link_dpid2b_to_dpid3.getDstPort())
+				.setConfig(0)
+				.build();
+		sw.write(portMod);
+		
+		log.info("Took down ports on path sw1--sw2a--sw3 and brought up ports on sw1--sw2b--sw3");
 	}
 }
