@@ -833,7 +833,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			log.error("Bad OFVersion {}", sw.getOFFactory().getVersion().toString());
 			break;
 		}
-		
+		log.info("Port config: {}", config);
 		return config;
 	}
 
