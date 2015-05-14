@@ -34,7 +34,7 @@ public class TogglePathResource extends ServerResource {
 	 */
 	@Post
 	@Put
-	Map<String, String> handleRequest(String json) {
+	public Map<String, String> handleRequest(String json) {
 		return ((IGREESC15Service) getContext().getAttributes().get(IGREESC15Service.class.getCanonicalName())).handleToggleRequest(json);
 	}
 }

@@ -5,7 +5,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -197,6 +196,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		 * with it for anything. We will ask it for links when a REST API call is made.
 		 * This will allow us to determine the ports used in our flows.
 		 */
+		log.info("Fast failover demo module has successfully started.");
 	}
 
 	@Override
@@ -305,9 +305,10 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		 * Next, insert flows if they haven't been already.
 		 */
 		insertFlows();
+		message.put("test", "some string");
 
 
-		return null;
+		return message;
 	}
 
 	private boolean learnLinks() {
