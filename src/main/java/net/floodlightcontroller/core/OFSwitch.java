@@ -66,6 +66,7 @@ import org.projectfloodlight.openflow.protocol.OFTableFeatures;
 import org.projectfloodlight.openflow.protocol.OFTableFeaturesStatsReply;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.types.DatapathId;
+import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFAuxId;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TableId;
