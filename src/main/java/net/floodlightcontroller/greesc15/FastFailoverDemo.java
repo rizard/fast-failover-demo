@@ -833,7 +833,6 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			log.error("Bad OFVersion {}", sw.getOFFactory().getVersion().toString());
 			break;
 		}
-		log.info("Port config: {}", config);
 		return config;
 	}
 
@@ -846,6 +845,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		OFPortMod portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid1_to_dpid2b.getSrcPort())
 				.setConfig(portDown(sw))
+				.setMask(portDown(sw))
 				.setHwAddr(sw.getPort(link_dpid1_to_dpid2b.getSrcPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
@@ -853,6 +853,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid1_to_dpid2a.getSrcPort())
 				.setConfig(0)
+				.setMask(portDown(sw))
 				.setHwAddr(sw.getPort(link_dpid1_to_dpid2a.getSrcPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
@@ -862,6 +863,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid2b_to_dpid3.getDstPort())
 				.setConfig(portDown(sw))
+				.setMask(portDown(sw))
 				.setHwAddr(sw.getPort(link_dpid2b_to_dpid3.getDstPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
@@ -869,6 +871,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid2a_to_dpid3.getDstPort())
 				.setConfig(0)
+				.setMask(portDown(sw))
 				.setHwAddr(sw.getPort(link_dpid2a_to_dpid3.getDstPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
@@ -885,6 +888,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		OFPortMod portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid1_to_dpid2a.getSrcPort())
 				.setConfig(portDown(sw))
+				.setMask(portDown(sw))
 				.setHwAddr(sw.getPort(link_dpid1_to_dpid2a.getSrcPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
@@ -892,6 +896,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid1_to_dpid2b.getSrcPort())
 				.setConfig(0)
+				.setMask(portDown(sw))
 				.setHwAddr(sw.getPort(link_dpid1_to_dpid2b.getSrcPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
@@ -901,6 +906,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid2a_to_dpid3.getDstPort())
 				.setConfig(portDown(sw))
+				.setMask(portDown(sw))
 				.setHwAddr(sw.getPort(link_dpid2a_to_dpid3.getDstPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
@@ -908,6 +914,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid2b_to_dpid3.getDstPort())
 				.setConfig(0)
+				.setMask(portDown(sw))
 				.setHwAddr(sw.getPort(link_dpid2b_to_dpid3.getDstPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
