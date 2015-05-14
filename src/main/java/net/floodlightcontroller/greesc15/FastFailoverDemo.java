@@ -869,7 +869,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid2a_to_dpid3.getDstPort())
 				.setConfig(0)
-				.setHwAddr(sw.getPort(link_dpid2b_to_dpid3.getDstPort()).getHwAddr())
+				.setHwAddr(sw.getPort(link_dpid2a_to_dpid3.getDstPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
 		
