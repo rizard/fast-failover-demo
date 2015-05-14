@@ -858,7 +858,10 @@ public class OFSwitchHandshakeHandler implements IOFConnectionListener {
 				}
 				break;
 			default:
-				illegalMessageReceived(m);
+				/* 
+				 * no-op:
+				 * we can send any request at any time
+				 */
 				break;
 			}
 		}

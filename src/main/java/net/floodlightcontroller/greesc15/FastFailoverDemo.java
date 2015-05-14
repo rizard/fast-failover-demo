@@ -393,7 +393,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 					.build();
 			sw2a.write(flowDelete);
 
-			sendBarrier(sw2a);
+			//sendBarrier(sw2a);
 
 			/* ARP and IPv4 from sw2a to sw3 */
 			OFFlowAdd flowAdd = sw2a.getOFFactory().buildFlowAdd()
