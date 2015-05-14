@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -12,13 +14,19 @@ import java.util.Set;
 
 import org.projectfloodlight.openflow.protocol.OFBarrierReply;
 import org.projectfloodlight.openflow.protocol.OFBarrierRequest;
+import org.projectfloodlight.openflow.protocol.OFBucket;
 import org.projectfloodlight.openflow.protocol.OFFlowAdd;
 import org.projectfloodlight.openflow.protocol.OFFlowDelete;
+import org.projectfloodlight.openflow.protocol.OFGroupAdd;
+import org.projectfloodlight.openflow.protocol.OFGroupDelete;
+import org.projectfloodlight.openflow.protocol.OFGroupType;
 import org.projectfloodlight.openflow.protocol.OFPortDesc;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
 import org.projectfloodlight.openflow.protocol.match.MatchField;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.EthType;
+import org.projectfloodlight.openflow.types.OFGroup;
+import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.U64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -232,11 +240,30 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 	@Override
 	public void switchRemoved(DatapathId switchId) {
 		/*
-		 * Set the switch as disconnected.
+		 * Set the switch as disconnected and remove all
+		 * associated links. The port might change if/when
+		 * the switch comes back up.
 		 */
 		if (switchConnected.keySet().contains(switchId)) {
 			switchConnected.put(switchId, false);
 			allSwitchesConnected = false;
+			if (dpid1.equals(switchId)) {
+				dpid1_has_flows = false;
+				link_dpid1_to_dpid2a = null;
+				link_dpid1_to_dpid2b = null;
+			} else if (dpid2a.equals(switchId)) {
+				dpid2a_has_flows = false;
+				link_dpid2a_to_dpid3 = null;
+				link_dpid1_to_dpid2a = null;
+			} else if (dpid2b.equals(switchId)) {
+				dpid2b_has_flows = false;
+				link_dpid2b_to_dpid3 = null;
+				link_dpid1_to_dpid2b = null;
+			} else if (dpid3.equals(switchId)) {
+				dpid3_has_flows = false;
+				link_dpid2a_to_dpid3 = null;
+				link_dpid2b_to_dpid3 = null;
+			}
 			log.error("Switch {} disconnected! Check control network.", switchId.toString());
 		}	
 	}
@@ -393,7 +420,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 					.build();
 			sw2a.write(flowDelete);
 
-			//sendBarrier(sw2a);
+			sendBarrier(sw2a);
 
 			/* ARP and IPv4 from sw2a to sw3 */
 			OFFlowAdd flowAdd = sw2a.getOFFactory().buildFlowAdd()
@@ -405,45 +432,45 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.setExact(MatchField.ETH_TYPE, EthType.ARP)
 							.setExact(MatchField.IN_PORT, link_dpid1_to_dpid2a.getDstPort())
 							.build())
-					.setActions(Collections.singletonList((OFAction) sw2a.getOFFactory().actions().buildOutput()
-							.setMaxLen(0xffFFffFF)
-							.setPort(link_dpid2a_to_dpid3.getSrcPort())
-							.build()))
-					.build();
+							.setActions(Collections.singletonList((OFAction) sw2a.getOFFactory().actions().buildOutput()
+									.setMaxLen(0xffFFffFF)
+									.setPort(link_dpid2a_to_dpid3.getSrcPort())
+									.build()))
+									.build();
 			sw2a.write(flowAdd);
-			
+
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw2a.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 							.setExact(MatchField.IN_PORT, link_dpid1_to_dpid2a.getDstPort())
 							.build())
-					.build();
+							.build();
 			sw2a.write(flowAdd);
-			
+
 			/* ARP and IPv4 from sw3 to sw2a */
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw2a.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.ARP)
 							.setExact(MatchField.IN_PORT, link_dpid2a_to_dpid3.getSrcPort())
 							.build())
-					.setActions(Collections.singletonList((OFAction) sw2a.getOFFactory().actions().buildOutput()
-							.setMaxLen(0xffFFffFF)
-							.setPort(link_dpid1_to_dpid2a.getDstPort())
-							.build()))
-					.build();
+							.setActions(Collections.singletonList((OFAction) sw2a.getOFFactory().actions().buildOutput()
+									.setMaxLen(0xffFFffFF)
+									.setPort(link_dpid1_to_dpid2a.getDstPort())
+									.build()))
+									.build();
 			sw2a.write(flowAdd);
-			
+
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw2a.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 							.setExact(MatchField.IN_PORT, link_dpid2a_to_dpid3.getSrcPort())
 							.build())
-					.build();
+							.build();
 			sw2a.write(flowAdd);
-			
+
 			dpid2a_has_flows = true;
 		}
-		
+
 		if (!dpid2b_has_flows) {
 			IOFSwitch sw2b = switchService.getSwitch(dpid2b);
 			OFFlowDelete flowDelete = sw2b.getOFFactory().buildFlowDelete()
@@ -463,55 +490,197 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.setExact(MatchField.ETH_TYPE, EthType.ARP)
 							.setExact(MatchField.IN_PORT, link_dpid1_to_dpid2b.getDstPort())
 							.build())
-					.setActions(Collections.singletonList((OFAction) sw2b.getOFFactory().actions().buildOutput()
-							.setMaxLen(0xffFFffFF)
-							.setPort(link_dpid2b_to_dpid3.getSrcPort())
-							.build()))
-					.build();
+							.setActions(Collections.singletonList((OFAction) sw2b.getOFFactory().actions().buildOutput()
+									.setMaxLen(0xffFFffFF)
+									.setPort(link_dpid2b_to_dpid3.getSrcPort())
+									.build()))
+									.build();
 			sw2b.write(flowAdd);
-			
+
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw2b.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 							.setExact(MatchField.IN_PORT, link_dpid1_to_dpid2b.getDstPort())
 							.build())
-					.build();
+							.build();
 			sw2b.write(flowAdd);
-			
+
 			/* ARP and IPv4 from sw3 to sw2a */
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw2b.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.ARP)
 							.setExact(MatchField.IN_PORT, link_dpid2b_to_dpid3.getSrcPort())
 							.build())
-					.setActions(Collections.singletonList((OFAction) sw2b.getOFFactory().actions().buildOutput()
-							.setMaxLen(0xffFFffFF)
-							.setPort(link_dpid1_to_dpid2b.getDstPort())
-							.build()))
-					.build();
+							.setActions(Collections.singletonList((OFAction) sw2b.getOFFactory().actions().buildOutput()
+									.setMaxLen(0xffFFffFF)
+									.setPort(link_dpid1_to_dpid2b.getDstPort())
+									.build()))
+									.build();
 			sw2b.write(flowAdd);
-			
+
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw2b.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
 							.setExact(MatchField.IN_PORT, link_dpid2b_to_dpid3.getSrcPort())
 							.build())
-					.build();
+							.build();
 			sw2b.write(flowAdd);
-			
-			dpid2b_has_flows = true;
-			
+
+			dpid2b_has_flows = true;	
 		}
-		
+
 		if (!dpid1_has_flows) {
+			IOFSwitch sw1 = switchService.getSwitch(dpid1);
+			OFFlowDelete flowDelete = sw1.getOFFactory().buildFlowDelete()
+					.setCookie(cookie)
+					.build();
+			sw1.write(flowDelete);
+
+			OFGroupDelete groupDelete = sw1.getOFFactory().buildGroupDelete()
+					.setGroup(OFGroup.ANY)
+					.build();
+			sw1.write(groupDelete);
+
+			sendBarrier(sw1);
 			
+			/* Add the group: fast-failover watching ports leading to dpid2a and dpid2b */
+			ArrayList<OFBucket> buckets = new ArrayList<OFBucket>(2);
+			buckets.add(sw1.getOFFactory().buildBucket()
+					.setWatchPort(link_dpid1_to_dpid2a.getSrcPort())
+					.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildOutput()
+							.setMaxLen(0xffFFffFF)
+							.setPort(link_dpid1_to_dpid2a.getSrcPort())
+							.build()))
+							.build());
+			buckets.add(sw1.getOFFactory().buildBucket()
+					.setWatchPort(link_dpid1_to_dpid2b.getSrcPort())
+					.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildOutput()
+							.setMaxLen(0xffFFffFF)
+							.setPort(link_dpid1_to_dpid2b.getSrcPort())
+							.build()))
+							.build());
+			OFGroupAdd groupAdd = sw1.getOFFactory().buildGroupAdd()
+					.setGroup(OFGroup.of(1))
+					.setGroupType(OFGroupType.FF)
+					.setBuckets(buckets)
+					.build();
+			sw1.write(groupAdd);
+
+			/* ARP and IPv4 from sw1 to group1 */
+			OFFlowAdd flowAdd = sw1.getOFFactory().buildFlowAdd()
+					.setCookie(cookie)
+					.setHardTimeout(0)
+					.setIdleTimeout(0)
+					.setPriority(FlowModUtils.PRIORITY_MAX)
+					.setMatch(sw1.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.ARP)
+							.setExact(MatchField.IN_PORT, getHostPort(sw1))
+							.build())
+							.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildGroup()
+									.setGroup(OFGroup.of(1))
+									.build()))
+									.build();
+
+			sw1.write(flowAdd);
+
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw1.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+							.setExact(MatchField.IN_PORT, getHostPort(sw1))
+							.build())
+							.build();
+			sw1.write(flowAdd);
+
+			/* ARP and IPv4 from sw2a to host */
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw1.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.ARP)
+							.setExact(MatchField.IN_PORT, link_dpid1_to_dpid2a.getSrcPort())
+							.build())
+							.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildOutput()
+									.setMaxLen(0xffFFffFF)
+									.setPort(getHostPort(sw1))
+									.build()))
+									.build();
+			sw1.write(flowAdd);
+
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw1.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+							.setExact(MatchField.IN_PORT, link_dpid1_to_dpid2a.getSrcPort())
+							.build())
+							.build();
+			sw1.write(flowAdd);
+			
+			/* ARP and IPv4 from sw2b to host */
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw1.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.ARP)
+							.setExact(MatchField.IN_PORT, link_dpid1_to_dpid2b.getSrcPort())
+							.build())
+							.build();
+			sw1.write(flowAdd);
+
+			flowAdd = flowAdd.createBuilder()
+					.setMatch(sw1.getOFFactory().buildMatch()
+							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+							.setExact(MatchField.IN_PORT, link_dpid1_to_dpid2b.getSrcPort())
+							.build())
+							.build();
+			sw1.write(flowAdd);
+
 			dpid1_has_flows = true;
 		}
-		
+
 		if (!dpid3_has_flows) {
-			
+
 			dpid3_has_flows = true;
 		}
 
+	}
+
+	private OFPort getHostPort(IOFSwitch sw) {
+		if (sw.getId().equals(dpid1)) {
+			OFPort port = null;
+			Iterator<OFPortDesc> itr = sw.getPorts().iterator();
+			while (itr.hasNext()) {
+				OFPortDesc portDesc = itr.next();
+				if (!portDesc.getPortNo().equals(link_dpid1_to_dpid2a.getSrcPort())
+						&& !portDesc.getPortNo().equals(link_dpid1_to_dpid2b.getSrcPort())
+						&& !portDesc.getPortNo().equals(OFPort.LOCAL)) {
+					port = portDesc.getPortNo();
+					break;
+				}
+			}
+
+			if (port != null) {
+				return port;
+			} else {
+				log.error("Error locating port on switch {}. Possible ports: {}", sw.getId().toString(), sw.getPorts().toString());
+				throw new IllegalArgumentException("Could not find host port on switch. Switch=" + sw.getId().toString());
+			}
+		} else if (sw.getId().equals(dpid3)) {
+			OFPort port = null;
+			Iterator<OFPortDesc> itr = sw.getPorts().iterator();
+			while (itr.hasNext()) {
+				OFPortDesc portDesc = itr.next();
+				if (!portDesc.getPortNo().equals(link_dpid2a_to_dpid3.getDstPort())
+						&& !portDesc.getPortNo().equals(link_dpid2b_to_dpid3.getDstPort())
+						&& !portDesc.getPortNo().equals(OFPort.LOCAL)) {
+					port = portDesc.getPortNo();
+					break;
+				}
+			}
+
+			if (port != null) {
+				return port;
+			} else {
+				log.error("Error locating port on switch {}. Possible ports: {}", sw.getId().toString(), sw.getPorts().toString());
+				throw new IllegalArgumentException("Could not find host port on switch. Switch=" + sw.getId().toString());
+			}
+		} else {
+			log.error("We don't have a host on switch {}.", sw.getId().toString());
+			throw new IllegalArgumentException("Invalid switch for host. Switch=" + sw.getId().toString());
+		}
 	}
 }
