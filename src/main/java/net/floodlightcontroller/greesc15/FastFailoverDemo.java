@@ -548,6 +548,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			ArrayList<OFBucket> buckets = new ArrayList<OFBucket>(2);
 			buckets.add(sw1.getOFFactory().buildBucket()
 					.setWatchPort(link_dpid1_to_dpid2a.getSrcPort())
+					.setWatchGroup(OFGroup.ZERO)
 					.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildOutput()
 							.setMaxLen(0xffFFffFF)
 							.setPort(link_dpid1_to_dpid2a.getSrcPort())
@@ -555,6 +556,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build());
 			buckets.add(sw1.getOFFactory().buildBucket()
 					.setWatchPort(link_dpid1_to_dpid2b.getSrcPort())
+					.setWatchGroup(OFGroup.ZERO)
 					.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildOutput()
 							.setMaxLen(0xffFFffFF)
 							.setPort(link_dpid1_to_dpid2b.getSrcPort())
