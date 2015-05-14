@@ -538,6 +538,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 
 			OFGroupDelete groupDelete = sw1.getOFFactory().buildGroupDelete()
 					.setGroup(OFGroup.ANY)
+					.setGroupType(OFGroupType.FF)
 					.build();
 			sw1.write(groupDelete);
 
