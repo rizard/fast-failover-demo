@@ -320,10 +320,10 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			Set<Link> links = linksByDpid.get(dpid1);
 			if (links != null) {
 				for (Link link : links) {
-					if (link_dpid1_to_dpid2a != null && link.getSrc().equals(dpid1) && link.getDst().equals(dpid2a)) {
+					if (link_dpid1_to_dpid2a == null && link.getSrc().equals(dpid1) && link.getDst().equals(dpid2a)) {
 						log.info("Learned Link: {}", link.toString());
 						link_dpid1_to_dpid2a = link;
-					} else if (link_dpid1_to_dpid2b != null && link.getSrc().equals(dpid1) && link.getDst().equals(dpid2b)) {
+					} else if (link_dpid1_to_dpid2b == null && link.getSrc().equals(dpid1) && link.getDst().equals(dpid2b)) {
 						log.info("Learned Link: {}", link.toString());
 						link_dpid1_to_dpid2b = link;
 					}	
