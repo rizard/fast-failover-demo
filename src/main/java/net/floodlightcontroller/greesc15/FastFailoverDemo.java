@@ -31,6 +31,7 @@ import org.projectfloodlight.openflow.protocol.ver13.OFPortConfigSerializerVer13
 import org.projectfloodlight.openflow.protocol.ver14.OFPortConfigSerializerVer14;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.EthType;
+import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFGroup;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.U64;
@@ -845,12 +846,14 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		OFPortMod portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid1_to_dpid2b.getSrcPort())
 				.setConfig(portDown(sw))
+				.setHwAddr(MacAddress.of(link_dpid1_to_dpid2b.getSrcPort().getPortNumber()))
 				.build();
 		sw.write(portMod);
 		/* Set up */
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid1_to_dpid2a.getSrcPort())
 				.setConfig(0)
+				.setHwAddr(MacAddress.of(link_dpid1_to_dpid2a.getSrcPort().getPortNumber()))
 				.build();
 		sw.write(portMod);
 		
@@ -859,12 +862,14 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid2b_to_dpid3.getDstPort())
 				.setConfig(portDown(sw))
+				.setHwAddr(MacAddress.of(link_dpid2b_to_dpid3.getDstPort().getPortNumber()))
 				.build();
 		sw.write(portMod);
 		/* Set up */
 		portMod = sw.getOFFactory().buildPortMod()
 				.setPortNo(link_dpid2a_to_dpid3.getDstPort())
 				.setConfig(0)
+				.setHwAddr(MacAddress.of(link_dpid2b_to_dpid3.getDstPort().getPortNumber()))
 				.build();
 		sw.write(portMod);
 		
