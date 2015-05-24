@@ -1,4 +1,4 @@
-package net.floodlightcontroller.greesc15;
+package net.floodlightcontroller.fastfailoverdemo;
 
 import java.util.Map;
 import net.floodlightcontroller.core.module.IFloodlightService;
@@ -19,6 +19,6 @@ import net.floodlightcontroller.core.module.IFloodlightService;
  * @author Ryan Izard, rizard@g.clemson.edu, ryan.izard@bigswitch.com
  *
  */
-public interface IGREESC15Service extends IFloodlightService {
+public interface IFastFailoverDemoService extends IFloodlightService {
 	Map<String, String> handleToggleRequest(String json);
 }

@@ -1,4 +1,4 @@
-package net.floodlightcontroller.greesc15.web;
+package net.floodlightcontroller.fastfailoverdemo.web;
 
 import net.floodlightcontroller.restserver.RestletRoutable;
 
@@ -19,7 +19,7 @@ import org.restlet.routing.Router;
  * @author Ryan Izard, rizard@g.clemson.edu, ryan.izard@bigswitch.com
  *
  */
-public class GREESC15Routable implements RestletRoutable {
+public class FastFailoverDemoRoutable implements RestletRoutable {
 
 	@Override
 	public Restlet getRestlet(Context context) {
@@ -38,7 +38,7 @@ public class GREESC15Routable implements RestletRoutable {
 		/*
 		 * This is the URI base our module will cover.
 		 */
-		return "/wm/greesc15";
+		return "/wm/fast-failover-demo";
 	}
 
 }

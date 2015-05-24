@@ -1,4 +1,4 @@
-package net.floodlightcontroller.greesc15;
+package net.floodlightcontroller.fastfailoverdemo;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -31,7 +31,6 @@ import org.projectfloodlight.openflow.protocol.ver13.OFPortConfigSerializerVer13
 import org.projectfloodlight.openflow.protocol.ver14.OFPortConfigSerializerVer14;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.EthType;
-import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFGroup;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.U64;
@@ -48,7 +47,7 @@ import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
-import net.floodlightcontroller.greesc15.web.GREESC15Routable;
+import net.floodlightcontroller.fastfailoverdemo.web.FastFailoverDemoRoutable;
 import net.floodlightcontroller.linkdiscovery.ILinkDiscoveryService;
 import net.floodlightcontroller.restserver.IRestApiService;
 import net.floodlightcontroller.routing.Link;
@@ -59,7 +58,7 @@ import net.floodlightcontroller.util.FlowModUtils;
  * @author Ryan Izard, rizard@g.clemson.edu, ryan.izard@bigswitch.com
  *
  */
-public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, IGREESC15Service {
+public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, IFastFailoverDemoService {
 	/*
 	 * The pre-defined services that we use.
 	 */
@@ -125,17 +124,17 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleServices() {
 		/*
-		 * Our module implements the IGREESC15Service.
+		 * Our module implements the IFastFailoverDemoService.
 		 */
 		Collection<Class<? extends IFloodlightService>> services = new ArrayList<Class<? extends IFloodlightService>>();
-		services.add(IGREESC15Service.class);
+		services.add(IFastFailoverDemoService.class);
 		return services;
 	}
 
 	@Override
 	public Map<Class<? extends IFloodlightService>, IFloodlightService> getServiceImpls() {
 		/*
-		 * We are the object that implements the IGREESC15Service. Give our reference
+		 * We are the object that implements the IFastFailoverDemoService. Give our reference
 		 * to the module loader so that any other modules can know where we are.
 		 * 
 		 * This will be used by the IRestApiService in its internal Map of Floodlight
@@ -143,7 +142,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		 * (exposed through the interface) when a REST query is received by the IRestApiService.
 		 */
 		Map<Class<? extends IFloodlightService>, IFloodlightService> services = new HashMap<Class<? extends IFloodlightService>, IFloodlightService>();
-		services.put(IGREESC15Service.class, this);
+		services.put(IFastFailoverDemoService.class, this);
 		return services;
 	}
 
@@ -210,7 +209,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		 * when an HTTP request comes in, the IRestApiService will have our URIs registered
 		 * and can match the request to one of them.
 		 */
-		restApiService.addRestletRoutable(new GREESC15Routable());
+		restApiService.addRestletRoutable(new FastFailoverDemoRoutable());
 
 		/*
 		 * And lastly, we also use the ILinkDiscoveryService; however, we don't register
@@ -440,6 +439,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			IOFSwitch sw2a = switchService.getSwitch(dpid2a);
 			OFFlowDelete flowDelete = sw2a.getOFFactory().buildFlowDelete()
 					.setCookie(cookie)
+					.setCookieMask(U64.NO_MASK)
 					.build();
 			sw2a.write(flowDelete);
 
@@ -499,6 +499,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			IOFSwitch sw2b = switchService.getSwitch(dpid2b);
 			OFFlowDelete flowDelete = sw2b.getOFFactory().buildFlowDelete()
 					.setCookie(cookie)
+					.setCookieMask(U64.NO_MASK)
 					.build();
 			sw2b.write(flowDelete);
 
@@ -558,6 +559,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			IOFSwitch sw1 = switchService.getSwitch(dpid1);
 			OFFlowDelete flowDelete = sw1.getOFFactory().buildFlowDelete()
 					.setCookie(cookie)
+					.setCookieMask(U64.NO_MASK)
 					.build();
 			sw1.write(flowDelete);
 
@@ -665,6 +667,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			IOFSwitch sw3 = switchService.getSwitch(dpid3);
 			OFFlowDelete flowDelete = sw3.getOFFactory().buildFlowDelete()
 					.setCookie(cookie)
+					.setCookieMask(U64.NO_MASK)
 					.build();
 			sw3.write(flowDelete);
 
