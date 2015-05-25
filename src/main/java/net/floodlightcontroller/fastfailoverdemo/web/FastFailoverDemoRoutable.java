@@ -30,6 +30,7 @@ public class FastFailoverDemoRoutable implements RestletRoutable {
 		 */
 		Router router = new Router(context);
 		router.attach("/toggle-path", TogglePathResource.class);
+		router.attach("/reset", ResetResource.class);
 		return router;
 	}
 

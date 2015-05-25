@@ -21,4 +21,6 @@ import net.floodlightcontroller.core.module.IFloodlightService;
  */
 public interface IFastFailoverDemoService extends IFloodlightService {
 	Map<String, String> handleToggleRequest(String json);
+	
+	Map<String, String> handleResetRequest(String json);
 }

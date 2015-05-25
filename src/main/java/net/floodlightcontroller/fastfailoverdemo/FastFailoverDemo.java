@@ -75,7 +75,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 	 * To more easily identify our flows, we will use a cookie.
 	 */
 	private static final U64 cookie = U64.ofRaw(0x11223344);
-	
+
 	/*
 	 * The path we're currently using. This will be used to determine
 	 * which set of ports to take up/down upon a toggle.
@@ -229,7 +229,12 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			 * Add to Map.
 			 */
 			switchConnected.put(switchId, true);
-
+			
+			/*
+			 * Set ports up. This resets the switches from the "last run" if need be.
+			 */
+			setAllPortsUp(switchService.getSwitch(switchId));
+			
 			/*
 			 * Determine if all are connected.
 			 */
@@ -326,7 +331,8 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		 */
 		if (!allSwitchesConnected) {
 			log.error("Not all switches are connected. Status: {}", switchConnected.toString());
-			message.put("ERROR", "Not all switches are connected. Status: " + switchConnected.toString());
+			message.put("STATUS", "ERROR");
+			message.put("DETAILS", "Not all switches are connected. Switch status: " + switchConnected.toString());
 			return message;
 		}
 
@@ -335,16 +341,19 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		 */
 		if (!learnLinks()) {
 			log.error("Have not learned all links yet.");
-			message.put("ERROR", "Have not learned all links in topology. Try again after a few moments. "
+			message.put("STATUS", "ERROR");
+			message.put("DETAILS", "Have not learned all links in topology. Try again after a few moments. "
 					+ "Make sure all ports are set up to enable LLDP to discover missing links.");
 			return message;
 		}
 
 		/*
 		 * Next, insert flows if they haven't been already.
+		 * TODO We assume this was successful, which it might 
+		 * not be if the switches do not support groups or if
+		 * they are not OF1.3 or some other odd situation.
 		 */
-		insertFlows();
-		message.put("test", "some string");
+		boolean didInsertFlow = insertFlows();		
 
 		/*
 		 * Now, toggle the path.
@@ -352,11 +361,57 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		if (usingPath1) {
 			usePathA();
 			usingPath1 = !usingPath1;
+			message.put("STATUS", "SUCCESS");
+			message.put("DETAILS", (didInsertFlow ? "Inserted groups and flows. " : "") +
+					"Administratively set ports along path A up and path B down. " +
+					"You should observe path A being chosen by the FAST-FAILOVER groups, " +
+					"which can be verified by observing packets on s2a on path A" );
 		} else {
 			usePathB();
 			usingPath1 = !usingPath1;
+			message.put("STATUS", "Success");
+			message.put("DETAILS", (didInsertFlow ? "Inserted groups and flows. " : "") +
+					"Administratively set ports along path B up and path A down. " +
+					"You should observe path B being chosen by the FAST-FAILOVER groups, " +
+					"which can be verified by observing packets on s2b on path B" );
 		}
 
+		return message;
+	}
+	
+	@Override
+	public Map<String, String> handleResetRequest(String json) {
+		/*
+		 * Our return Map, which is readily converted to JSON.
+		 */
+		Map<String, String> message = new HashMap<String, String>();
+		
+		IOFSwitch sw = switchService.getSwitch(dpid1);
+		
+		if (sw == null) {
+			log.error("Could not reset s1 ports. Switch service does not see it connected. Check the control plane to verify s1 is in fact connected to the controller.");
+			message.put("S1 STATUS", "ERROR");
+			message.put("S1 DETAILS", "Could not reset s1. Switch service does not see it connected. " + 
+			"Check the control plane to verify s1 is in fact connected to the controller.");
+		} else {
+			setAllPortsUp(sw);
+			message.put("S1 STATUS", "SUCCESS");
+			message.put("S1 DETAILS", "Reset s1 ports to enabled/up.");
+		}
+		
+		sw = switchService.getSwitch(dpid3);
+		
+		if (sw == null) {
+			log.error("Could not reset s3 ports. Switch service does not see it connected. Check the control plane to verify s3 is in fact connected to the controller.");
+			message.put("S3 STATUS", "ERROR");
+			message.put("S3 DETAILS", "Could not reset s3. Switch service does not see it connected. " + 
+			"Check the control plane to verify s3 is in fact connected to the controller.");
+		} else {
+			setAllPortsUp(sw);
+			message.put("S3 STATUS", "SUCCESS");
+			message.put("S3 DETAILS", "Reset s3 ports to enabled/up.");
+		}
+		
 		return message;
 	}
 
@@ -433,7 +488,8 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		}
 	}
 
-	private void insertFlows() {
+	private boolean insertFlows() {
+		boolean pushed = false;
 
 		if (!dpid2a_has_flows) {
 			IOFSwitch sw2a = switchService.getSwitch(dpid2a);
@@ -490,7 +546,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build())
 							.build();
 			sw2a.write(flowAdd);
-			
+
 			log.info("Inserted flows for switch {}", dpid2a.toString());
 			dpid2a_has_flows = true;
 		}
@@ -552,7 +608,8 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 			sw2b.write(flowAdd);
 
 			log.info("Inserted flows for switch {}", dpid2b.toString());
-			dpid2b_has_flows = true;	
+			dpid2b_has_flows = true;
+			pushed = true;
 		}
 
 		if (!dpid1_has_flows) {
@@ -661,6 +718,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 
 			log.info("Inserted flows for switch {}", dpid1.toString());
 			dpid1_has_flows = true;
+			pushed = true;
 		}
 
 		if (!dpid3_has_flows) {
@@ -704,7 +762,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 					.build();
 			sw3.write(groupAdd);
 
-			/* ARP and IPv4 from sw3 to group1 */
+			/* ARP and IPv4 from s3 to group1 */
 			OFFlowAdd flowAdd = sw3.getOFFactory().buildFlowAdd()
 					.setCookie(cookie)
 					.setHardTimeout(0)
@@ -729,7 +787,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build();
 			sw3.write(flowAdd);
 
-			/* ARP and IPv4 from sw2a to host */
+			/* ARP and IPv4 from s2a to host */
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw3.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.ARP)
@@ -750,7 +808,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build();
 			sw3.write(flowAdd);
 
-			/* ARP and IPv4 from sw2b to host */
+			/* ARP and IPv4 from s2b to host */
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw3.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.ARP)
@@ -766,11 +824,13 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build())
 							.build();
 			sw3.write(flowAdd);
-			
+
 			log.info("Inserted flows for switch {}", dpid3.toString());
 			dpid3_has_flows = true;
+			pushed = true;
 		}
 
+		return pushed;
 	}
 
 	private OFPort getHostPort(IOFSwitch sw) {
@@ -818,6 +878,27 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 		}
 	}
 
+	private void setAllPortsUp(IOFSwitch sw) {
+		if (sw == null) {
+			log.error("Switch was null while setting ports up. That's weird.");
+			return;
+		} else if (sw.getId().equals(dpid1) || sw.getId().equals(dpid3)) {
+			Collection<OFPortDesc> ports = sw.getPorts();
+			for (OFPortDesc port : ports) {
+				if (!port.getPortNo().equals(OFPort.LOCAL)) {
+					/* Set up */
+					OFPortMod portMod = sw.getOFFactory().buildPortMod()
+							.setPortNo(port.getPortNo())
+							.setConfig(0) /* All zeros is the default config w/no flags set */
+							.setMask(portDown(sw)) /* Use port down mask to set it to value above --> UP */
+							.setHwAddr(port.getHwAddr())
+							.build();
+					sw.write(portMod);
+				}
+			}
+		}
+	}
+
 	private long portDown(IOFSwitch sw) {
 		long config = 0;
 		switch (sw.getOFFactory().getVersion()) {
@@ -845,7 +926,8 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 
 	private void usePathA() {
 		/*
-		 * Take down path B ports at sw1 and sw3
+		 * Take down path B ports at s1 and s3
+		 * Bring up path A ports at s1 and s3
 		 */
 		IOFSwitch sw = switchService.getSwitch(dpid1);
 		/* Set down */
@@ -864,7 +946,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 				.setHwAddr(sw.getPort(link_dpid1_to_dpid2a.getSrcPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
-		
+
 		sw = switchService.getSwitch(dpid3);
 		/* Set down */
 		portMod = sw.getOFFactory().buildPortMod()
@@ -882,13 +964,14 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 				.setHwAddr(sw.getPort(link_dpid2a_to_dpid3.getDstPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
-		
+
 		log.info("Took down ports on path sw1--sw2b--sw3 and brought up ports on sw1--sw2a--sw3");
 	}
 
 	private void usePathB() {
 		/*
-		 * Take down path B ports at sw1 and sw3
+		 * Take down path A ports at s1 and s3
+		 * Bring up path B ports at s1 and s3
 		 */
 		IOFSwitch sw = switchService.getSwitch(dpid1);
 		/* Set down */
@@ -907,7 +990,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 				.setHwAddr(sw.getPort(link_dpid1_to_dpid2b.getSrcPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
-		
+
 		sw = switchService.getSwitch(dpid3);
 		/* Set down */
 		portMod = sw.getOFFactory().buildPortMod()
@@ -925,7 +1008,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 				.setHwAddr(sw.getPort(link_dpid2b_to_dpid3.getDstPort()).getHwAddr())
 				.build();
 		sw.write(portMod);
-		
+
 		log.info("Took down ports on path sw1--sw2a--sw3 and brought up ports on sw1--sw2b--sw3");
 	}
 }
