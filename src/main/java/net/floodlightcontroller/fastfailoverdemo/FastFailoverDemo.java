@@ -628,57 +628,32 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 
 			sendBarrier(sw1);
 
-			/* Add the group: fast-failover watching ports leading to dpid2a and dpid2b */
-			ArrayList<OFBucket> buckets = new ArrayList<OFBucket>(2);
-			buckets.add(sw1.getOFFactory().buildBucket()
-					.setWatchPort(link_dpid1_to_dpid2a.getSrcPort())
-					.setWatchGroup(OFGroup.ZERO)
-					.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildOutput()
-							.setMaxLen(0xffFFffFF)
-							.setPort(link_dpid1_to_dpid2a.getSrcPort())
-							.build()))
-							.build());
-			buckets.add(sw1.getOFFactory().buildBucket()
-					.setWatchPort(link_dpid1_to_dpid2b.getSrcPort())
-					.setWatchGroup(OFGroup.ZERO)
-					.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildOutput()
-							.setMaxLen(0xffFFffFF)
-							.setPort(link_dpid1_to_dpid2b.getSrcPort())
-							.build()))
-							.build());
-			OFGroupAdd groupAdd = sw1.getOFFactory().buildGroupAdd()
-					.setGroup(OFGroup.of(1))
-					.setGroupType(OFGroupType.FF)
-					.setBuckets(buckets)
-					.build();
-			sw1.write(groupAdd);
+			/* Add the group: fast-failover watching ports leading to dpid2a/s2a and dpid2b/s2b
+			 * 
+			 * TODO Add the group here:
+			 */
+			
+			/* 
+			 * IPv4 and ARP from s1 to group1
+			 * 
+			 * TODO Add the two flows for IPv4 and ARP here:
+			 */
+			
+			/*
+			 * START REMOVE ME
+			 * 
+			 * FIXME Remove this block of code after you have implemented the tutorial.
+			 * It is only here to allow the controller to compile with the missing code.
+			 */
+			OFFlowAdd flowAdd = null;
+			if (flowAdd == null) {
+				throw new IllegalStateException("Need to implement tutorial first. If you've implemented the necessary code here, perhaps you need to remove this message?");
+			}
+			/* 
+			 * END REMOVE ME
+			 */
 
-			/* ARP and IPv4 from sw1 to group1 */
-			OFFlowAdd flowAdd = sw1.getOFFactory().buildFlowAdd()
-					.setCookie(cookie)
-					.setHardTimeout(0)
-					.setIdleTimeout(0)
-					.setPriority(FlowModUtils.PRIORITY_MAX)
-					.setMatch(sw1.getOFFactory().buildMatch()
-							.setExact(MatchField.ETH_TYPE, EthType.ARP)
-							.setExact(MatchField.IN_PORT, getHostPort(sw1))
-							.build())
-							.setActions(Collections.singletonList((OFAction) sw1.getOFFactory().actions().buildGroup()
-									.setGroup(OFGroup.of(1))
-									.build()))
-									.build();
-
-			sw1.write(flowAdd);
-
-			flowAdd = flowAdd.createBuilder()
-					.setMatch(sw1.getOFFactory().buildMatch()
-							.setExact(MatchField.ETH_TYPE, EthType.IPv4)
-							.setExact(MatchField.IN_PORT, getHostPort(sw1))
-							.build())
-							.build();
-			sw1.write(flowAdd);
-
-			/* ARP and IPv4 from sw2a to host */
+			/* ARP and IPv4 from s2a to host */
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw1.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.ARP)
@@ -699,7 +674,7 @@ public class FastFailoverDemo implements IFloodlightModule, IOFSwitchListener, I
 							.build();
 			sw1.write(flowAdd);
 
-			/* ARP and IPv4 from sw2b to host */
+			/* ARP and IPv4 from s2b to host */
 			flowAdd = flowAdd.createBuilder()
 					.setMatch(sw1.getOFFactory().buildMatch()
 							.setExact(MatchField.ETH_TYPE, EthType.ARP)
