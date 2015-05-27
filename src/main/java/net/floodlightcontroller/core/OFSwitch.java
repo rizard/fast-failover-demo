@@ -113,8 +113,6 @@ public class OFSwitch implements IOFSwitchBackend {
 	 */
 	private final PortManager portManager;
 
-	//private final TableManager tableManager;
-
 	private volatile boolean connected;
 
 	private volatile OFControllerRole role;
@@ -126,6 +124,8 @@ public class OFSwitch implements IOFSwitchBackend {
 	private SwitchStatus status;
 
 	public static final int OFSWITCH_APP_ID = ident(5);
+	
+	private TableId maxTableToGetTableMissFlow = TableId.of(4); /* this should cover most HW switches that have a couple SW flow tables */
 
 	static {
 		AppCookie.registerApp(OFSwitch.OFSWITCH_APP_ID, "switch");
@@ -817,7 +817,7 @@ public class OFSwitch implements IOFSwitchBackend {
 		this.buffers = featuresReply.getNBuffers();
 
 		if (featuresReply.getVersion().compareTo(OFVersion.OF_13) < 0 ) {
-			// FIXME:LOJI: OF1.3 has per table actions. This needs to be modeled / handled here
+			/* OF1.3+ Per-table actions are set later in the OFTableFeaturesRequest/Reply */
 			this.actions = featuresReply.getActions();
 		}
 		this.tables = featuresReply.getNTables();
@@ -1208,5 +1208,20 @@ public class OFSwitch implements IOFSwitchBackend {
 	@Override
 	public TableFeatures getTableFeatures(TableId table) {
 		return tableFeaturesByTableId.get(table);
+	}
+
+	@Override
+	public TableId getMaxTableForTableMissFlow() {
+		return maxTableToGetTableMissFlow;
+	}
+	
+	@Override
+	public TableId setMaxTableForTableMissFlow(TableId max) {
+		if (max.getValue() >= tables) {
+			maxTableToGetTableMissFlow = TableId.of(tables - 1 < 0 ? 0 : tables - 1);
+		} else {
+			maxTableToGetTableMissFlow = max;
+		}
+		return maxTableToGetTableMissFlow;
 	}
 }
