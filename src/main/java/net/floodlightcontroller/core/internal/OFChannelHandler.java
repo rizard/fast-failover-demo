@@ -20,6 +20,7 @@ import org.jboss.netty.handler.timeout.IdleStateEvent;
 import org.jboss.netty.handler.timeout.IdleStateHandler;
 import org.jboss.netty.handler.timeout.ReadTimeoutException;
 import org.jboss.netty.util.Timer;
+
 import net.floodlightcontroller.core.IOFConnectionBackend;
 import net.floodlightcontroller.core.OFConnection;
 import net.floodlightcontroller.core.annotations.LogMessageDoc;
@@ -29,6 +30,7 @@ import net.floodlightcontroller.core.internal.OpenflowPipelineFactory.PipelineHa
 import net.floodlightcontroller.core.internal.OpenflowPipelineFactory.PipelineIdleReadTimeout;
 import net.floodlightcontroller.core.internal.OpenflowPipelineFactory.PipelineIdleWriteTimeout;
 import net.floodlightcontroller.debugcounter.IDebugCounterService;
+
 import org.projectfloodlight.openflow.exceptions.OFParseError;
 import org.projectfloodlight.openflow.protocol.OFEchoReply;
 import org.projectfloodlight.openflow.protocol.OFEchoRequest;
@@ -40,6 +42,7 @@ import org.projectfloodlight.openflow.protocol.OFFeaturesReply;
 import org.projectfloodlight.openflow.protocol.OFFeaturesRequest;
 import org.projectfloodlight.openflow.protocol.OFHello;
 import org.projectfloodlight.openflow.protocol.OFMessage;
+import org.projectfloodlight.openflow.protocol.OFPortStatus;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.types.OFAuxId;
 import org.slf4j.Logger;
@@ -110,6 +113,10 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 				throws IOException {
 			// we only expect features reply in the WAIT_FEATURES_REPLY state
 			illegalMessageReceived(m);
+		}
+		
+		void processOFPortStatus(OFPortStatus m) {
+			unhandledMessageReceived(m);
 		}
 
 		private final boolean channelHandshakeComplete;
@@ -260,6 +267,9 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 				case ECHO_REQUEST:
 					processOFEchoRequest((OFEchoRequest)m);
 					break;
+				case PORT_STATUS:
+					processOFPortStatus((OFPortStatus)m);
+					break;
 				default:
 					illegalMessageReceived(m);
 					break;
@@ -344,6 +354,11 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 		@Override
 		void enterState() throws IOException {
 			sendFeaturesRequest();
+		}
+		
+		@Override
+		void processOFPortStatus(OFPortStatus m) {
+			log.warn("Ignoring PORT_STATUS message from {} during OpenFlow channel establishment. Ports will be explicitly queried in a later state.", channel.getRemoteAddress());
 		}
 	};
 
