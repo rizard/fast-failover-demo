@@ -36,7 +36,6 @@ import org.jboss.netty.util.TimerTask;
 
 import java.util.Date;
 
-import net.floodlightcontroller.core.annotations.LogMessageDoc;
 import net.floodlightcontroller.core.internal.Controller;
 import net.floodlightcontroller.core.internal.IOFConnectionListener;
 import net.floodlightcontroller.debugcounter.IDebugCounterService;
@@ -51,6 +50,7 @@ import org.projectfloodlight.openflow.protocol.OFStatsRequest;
 import org.projectfloodlight.openflow.protocol.OFType;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.OFAuxId;
+import org.projectfloodlight.openflow.types.U64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,9 +85,10 @@ public class OFConnection implements IOFConnection, IOFConnectionBackend{
     private static final long DELIVERABLE_TIME_OUT = 60;
     private static final TimeUnit DELIVERABLE_TIME_OUT_UNIT = TimeUnit.SECONDS;
 
-
     private final OFConnectionCounters counters;
     private IOFConnectionListener listener;
+    
+    private volatile U64 latency;
 
     public OFConnection(@Nonnull DatapathId dpid,
                         @Nonnull OFFactory factory,
@@ -110,6 +111,7 @@ public class OFConnection implements IOFConnection, IOFConnectionBackend{
         this.xidDeliverableMap = new ConcurrentHashMap<>();
         this.counters = new OFConnectionCounters(debugCounters, dpid, this.auxId);
         this.timer = timer;
+        this.latency = U64.ZERO;
     }
 
     @Override
@@ -149,12 +151,6 @@ public class OFConnection implements IOFConnection, IOFConnectionBackend{
     }
 
     @Override
-    @LogMessageDoc(level = "WARN",
-                   message = "Sending OF message that modifies switch "
-                           + "state while in the slave role: {switch}",
-                   explanation = "An application has sent a message to a switch "
-                           + "that is not valid when the switch is in a slave role",
-                   recommendation = LogMessageDoc.REPORT_CONTROLLER_BUG)
     public void write(Iterable<OFMessage> msglist) {
         if (!isConnected()) {
             if (logger.isDebugEnabled())
@@ -380,6 +376,27 @@ public class OFConnection implements IOFConnection, IOFConnectionBackend{
             listener.messageReceived(this, m);
         }
     }
+    
+    @Override
+    public U64 getLatency() {
+    	return this.latency;
+    }
+    
+    @Override
+    public void updateLatency(U64 latency) {
+    	if (latency == null) {
+			logger.error("Latency must be non-null. Ignoring null latency value.");
+			return;
+		} else if (this.latency.equals(U64.ZERO)) { 
+			logger.debug("Recording previously 0ms switch {} latency as {}ms", this.getDatapathId(), latency.getValue());
+			this.latency = latency;
+			return;
+		} else {
+			double oldWeight = 0.30;
+			this.latency = U64.of((long) (this.latency.getValue() * oldWeight + latency.getValue() * (1 - oldWeight)));
+			logger.debug("Switch {} latency updated to {}ms", this.getDatapathId(), this.latency.getValue());
+		}
+    }
 
     /** A dummy connection listener that just logs warn messages. Saves us a few null checks
      * @author Andreas Wundsam <andreas.wundsam@bigswitch.com>
@@ -409,8 +426,5 @@ public class OFConnection implements IOFConnection, IOFConnectionBackend{
 			// TODO Auto-generated method stub
 			
 		}
-
     }
-
-
 }

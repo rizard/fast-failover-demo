@@ -16,17 +16,13 @@
 
 package net.floodlightcontroller.core.web;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.restlet.data.Status;
 import org.restlet.resource.ServerResource;
 
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.RoleInfo;
-import net.floodlightcontroller.core.HARole;
-import net.floodlightcontroller.core.annotations.LogMessageDoc;
 
 import org.restlet.resource.Get;
 import org.restlet.resource.Post;
@@ -34,7 +30,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.MappingJsonFactory;
 
 public class ControllerRoleResource extends ServerResource {
@@ -61,11 +56,6 @@ public class ControllerRoleResource extends ServerResource {
     }
 
     @Post
-    @LogMessageDoc(level="WARN",
-                   message="Invalid role value specified in REST API to " +
-                      "set controller role",
-                   explanation="An HA role change request was malformed.",
-                   recommendation=LogMessageDoc.CHECK_CONTROLLER)
     public Map<String, String> setRole(String json) {
     	Map<String, String> retValue = new HashMap<String, String>();
 

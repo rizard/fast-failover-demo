@@ -51,8 +51,6 @@ import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.IEntityClassifierService;
 import net.floodlightcontroller.devicemanager.internal.DefaultEntityClassifier;
 import net.floodlightcontroller.devicemanager.test.MockDeviceManager;
-import net.floodlightcontroller.packet.Ethernet;
-import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.restserver.IRestApiService;
 import net.floodlightcontroller.restserver.RestApiServer;
 import net.floodlightcontroller.staticflowentry.StaticFlowEntryPusher;
@@ -69,7 +67,11 @@ import org.junit.Test;
 import org.projectfloodlight.openflow.protocol.OFFactories;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.types.DatapathId;
+import org.projectfloodlight.openflow.types.IPv4Address;
+import org.projectfloodlight.openflow.types.IPv6Address;
+import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFPort;
+import org.projectfloodlight.openflow.types.VlanVid;
 
 public class ACLTest extends FloodlightTestCase {
 
@@ -165,7 +167,7 @@ public class ACLTest extends FloodlightTestCase {
 		
 		reset(topology);
 //		expect(topology.isIncomingBroadcastAllowed(DatapathId.of(anyLong()), OFPort.of(anyShort()))).andReturn(true).anyTimes();
-//		expect(topology.getL2DomainId(DatapathId.of(1L))).andReturn(DatapathId.of(1L)).anyTimes();
+//		expect(topology.getOpenflowDomainId(DatapathId.of(1L))).andReturn(DatapathId.of(1L)).anyTimes();
 		expect(topology.isAttachmentPointPort(DatapathId.of(1L), OFPort.of(1))).andReturn(true).anyTimes();
 		expect(topology.isAttachmentPointPort(DatapathId.of(2L), OFPort.of(1))).andReturn(true).anyTimes();
 		replay(topology);
@@ -177,14 +179,12 @@ public class ACLTest extends FloodlightTestCase {
 		Map<String, Object> row;
 
 		// a new AP[dpid:00:00:00:00:00:00:00:01 port:1 ip:10.0.0.1] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:01")),
-				null, IPv4.toIPv4Address("10.0.0.1"), 1L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:01"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.1"), IPv6Address.NONE, DatapathId.of(1), OFPort.of(1));
 		
 		// a new AP[dpid:00:00:00:00:00:00:00:02 port:1 ip:10.0.0.3] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:03")),
-				null, IPv4.toIPv4Address("10.0.0.3"), 2L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:03"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.3"), IPv6Address.NONE, DatapathId.of(2), OFPort.of(1));
 		
 		// rule1 indicates host(10.0.0.0/28) can not access TCP port 80 in host(10.0.0.254/32)
 		rule1 = new ACLRule();
@@ -344,9 +344,8 @@ public class ACLTest extends FloodlightTestCase {
 		assertEquals(acl.getRules().size(), 1);
 		
 		// a new AP[dpid:00:00:00:00:00:00:00:01 port:1 ip:10.0.0.1] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:01")),
-				null, IPv4.toIPv4Address("10.0.0.1"), 1L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:01"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.1"), IPv6Address.NONE, DatapathId.of(1), OFPort.of(1));
 		
 		resultSet = storageService.getRow(
 				StaticFlowEntryPusher.TABLE_NAME, "ACLRule_1_00:00:00:00:00:00:00:01");
@@ -364,9 +363,8 @@ public class ACLTest extends FloodlightTestCase {
 		}
 		
 		// a new AP[dpid:00:00:00:00:00:00:00:01 port:2 ip:10.0.0.2] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:02")),
-				null, IPv4.toIPv4Address("10.0.0.2"), 1L, 2);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:02"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.2"), IPv6Address.NONE, DatapathId.of(1), OFPort.of(2));
 		
 		resultSet = storageService.getRow(
 				StaticFlowEntryPusher.TABLE_NAME, "ACLRule_1_00:00:00:00:00:00:00:01");
@@ -392,9 +390,8 @@ public class ACLTest extends FloodlightTestCase {
 		assertEquals(acl.getRules().size(), 2);
 
 		// a new AP[dpid:00:00:00:00:00:00:00:02 port:1 ip:10.0.0.3] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:03")),
-				null, IPv4.toIPv4Address("10.0.0.3"), 2L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:03"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.3"), IPv6Address.NONE, DatapathId.of(2), OFPort.of(1));
 		
 		resultSet = storageService.getRow(
 				StaticFlowEntryPusher.TABLE_NAME, "ACLRule_2_00:00:00:00:00:00:00:02");
@@ -416,7 +413,7 @@ public class ACLTest extends FloodlightTestCase {
 	public void testDeviceIPV4AddrChanged() {
 		
 		reset(topology);
-		expect(topology.getL2DomainId(DatapathId.of(1L))).andReturn(DatapathId.of(1L)).anyTimes();
+		expect(topology.getOpenflowDomainId(DatapathId.of(1L))).andReturn(DatapathId.of(1L)).anyTimes();
 		expect(topology.isAttachmentPointPort(DatapathId.of(1L), OFPort.of(1))).andReturn(true).anyTimes();
 		expect(topology.isAttachmentPointPort(DatapathId.of(2L), OFPort.of(1))).andReturn(true).anyTimes();
 		replay(topology);
@@ -428,9 +425,8 @@ public class ACLTest extends FloodlightTestCase {
 		Map<String, Object> row;
 	
 		// a new AP[dpid:00:00:00:00:00:00:00:01 port:1] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:01")),
-				null, null, 1L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:01"),
+				VlanVid.ZERO, IPv4Address.NONE, IPv6Address.NONE, DatapathId.of(1), OFPort.of(1));
 		
 		// rule1 indicates host(10.0.0.0/28) can not access TCP port 80 in host(10.0.0.254/32)
 		rule1 = new ACLRule();
@@ -455,9 +451,8 @@ public class ACLTest extends FloodlightTestCase {
 		assertEquals(it.hasNext(), false);
 		
 		// a new AP[dpid:00:00:00:00:00:00:00:01 port:1 ip:10.0.0.1] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:01")),
-				null, IPv4.toIPv4Address("10.0.0.1"), 1L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:01"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.1"), IPv6Address.NONE, DatapathId.of(1), OFPort.of(1));
 		
 		resultSet = storageService.getRow(
 				StaticFlowEntryPusher.TABLE_NAME, "ACLRule_1_00:00:00:00:00:00:00:01");
@@ -479,7 +474,7 @@ public class ACLTest extends FloodlightTestCase {
 	public void testDeleteRule(){
 		reset(topology);
 //		expect(topology.isIncomingBroadcastAllowed(DatapathId.of(anyLong()), OFPort.of(anyShort()))).andReturn(true).anyTimes();
-//		expect(topology.getL2DomainId(DatapathId.of(1L))).andReturn(DatapathId.of(1L)).anyTimes();
+//		expect(topology.getOpenflowDomainId(DatapathId.of(1L))).andReturn(DatapathId.of(1L)).anyTimes();
 		expect(topology.isAttachmentPointPort(DatapathId.of(1L), OFPort.of(1))).andReturn(true).anyTimes();
 		expect(topology.isAttachmentPointPort(DatapathId.of(2L), OFPort.of(1))).andReturn(true).anyTimes();
 		replay(topology);
@@ -491,14 +486,12 @@ public class ACLTest extends FloodlightTestCase {
 		Map<String, Object> row;
 
 		// a new AP[dpid:00:00:00:00:00:00:00:01 port:1 ip:10.0.0.1] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:01")),
-				null, IPv4.toIPv4Address("10.0.0.1"), 1L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:01"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.1"), IPv6Address.NONE, DatapathId.of(1), OFPort.of(1));
 		
 		// a new AP[dpid:00:00:00:00:00:00:00:02 port:1 ip:10.0.0.3] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:03")),
-				null, IPv4.toIPv4Address("10.0.0.3"), 2L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:03"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.3"), IPv6Address.NONE, DatapathId.of(2), OFPort.of(1));
 		
 		// rule1 indicates host(10.0.0.0/28) can not access TCP port 80 in host(10.0.0.254/32)
 		rule1 = new ACLRule();
@@ -567,7 +560,7 @@ public class ACLTest extends FloodlightTestCase {
 	public void testDeleteAllRules(){
 		reset(topology);
 //		expect(topology.isIncomingBroadcastAllowed(DatapathId.of(anyLong()), OFPort.of(anyShort()))).andReturn(true).anyTimes();
-//		expect(topology.getL2DomainId(DatapathId.of(1L))).andReturn(DatapathId.of(1L)).anyTimes();
+//		expect(topology.getOpenflowDomainId(DatapathId.of(1L))).andReturn(DatapathId.of(1L)).anyTimes();
 		expect(topology.isAttachmentPointPort(DatapathId.of(1L), OFPort.of(1))).andReturn(true).anyTimes();
 		expect(topology.isAttachmentPointPort(DatapathId.of(2L), OFPort.of(1))).andReturn(true).anyTimes();
 		replay(topology);
@@ -579,14 +572,12 @@ public class ACLTest extends FloodlightTestCase {
 		Map<String, Object> row;
 
 		// a new AP[dpid:00:00:00:00:00:00:00:01 port:1 ip:10.0.0.1] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:01")),
-				null, IPv4.toIPv4Address("10.0.0.1"), 1L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:01"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.1"), IPv6Address.NONE, DatapathId.of(1), OFPort.of(1));
 		
 		// a new AP[dpid:00:00:00:00:00:00:00:02 port:1 ip:10.0.0.3] appears
-		deviceManager.learnEntity(
-				Ethernet.toLong(Ethernet.toMACAddress("00:00:00:00:00:03")),
-				null, IPv4.toIPv4Address("10.0.0.3"), 2L, 1);
+		deviceManager.learnEntity(MacAddress.of("00:00:00:00:00:03"),
+				VlanVid.ZERO, IPv4Address.of("10.0.0.3"), IPv6Address.NONE, DatapathId.of(2), OFPort.of(1));
 		
 		// rule1 indicates host(10.0.0.0/28) can not access TCP port 80 in host(10.0.0.254/32)
 		rule1 = new ACLRule();
