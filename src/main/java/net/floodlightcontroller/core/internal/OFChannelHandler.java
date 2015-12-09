@@ -2,7 +2,9 @@ package net.floodlightcontroller.core.internal;
 
 import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -23,8 +25,6 @@ import org.jboss.netty.util.Timer;
 
 import net.floodlightcontroller.core.IOFConnectionBackend;
 import net.floodlightcontroller.core.OFConnection;
-import net.floodlightcontroller.core.annotations.LogMessageDoc;
-import net.floodlightcontroller.core.annotations.LogMessageDocs;
 import net.floodlightcontroller.core.internal.OpenflowPipelineFactory.PipelineHandler;
 import net.floodlightcontroller.core.internal.OpenflowPipelineFactory.PipelineHandshakeTimeout;
 import net.floodlightcontroller.core.internal.OpenflowPipelineFactory.PipelineIdleReadTimeout;
@@ -41,10 +41,17 @@ import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFFeaturesReply;
 import org.projectfloodlight.openflow.protocol.OFFeaturesRequest;
 import org.projectfloodlight.openflow.protocol.OFHello;
+import org.projectfloodlight.openflow.protocol.OFHelloElem;
+import org.projectfloodlight.openflow.protocol.OFHelloElemVersionbitmap;
 import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPortStatus;
+import org.projectfloodlight.openflow.protocol.OFType;
 import org.projectfloodlight.openflow.protocol.OFVersion;
+import org.projectfloodlight.openflow.protocol.ver13.OFHelloElemTypeSerializerVer13;
+import org.projectfloodlight.openflow.protocol.ver14.OFHelloElemTypeSerializerVer14;
 import org.projectfloodlight.openflow.types.OFAuxId;
+import org.projectfloodlight.openflow.types.U32;
+import org.projectfloodlight.openflow.types.U64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,18 +72,21 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 	private Channel channel;
 	private final Timer timer;
 	private volatile OFChannelState state;
-	private OFFactory factory = OFFactories.getFactory(OFVersion.OF_14);
+	private OFFactory factory;
 	private OFFeaturesReply featuresReply;
 	private volatile OFConnection connection;
 	private final IDebugCounterService debugCounters;
+	private final List<U32> ofBitmaps;
 
 	/** transaction Ids to use during handshake. Since only one thread
 	 * calls into the OFChannelHandler we don't need atomic.
 	 * We will count down
 	 */
 	private long handshakeTransactionIds = 0x00FFFFFFFFL;
-
-
+	
+    private volatile long echoSendTime;
+    private volatile long featuresLatency;
+    
 	/**
 	 * Default implementation for message handlers in any OFChannelState.
 	 *
@@ -98,11 +108,12 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 
 		void processOFEchoReply(OFEchoReply m)
 				throws IOException {
-			// do nothing
+			/* Update the latency -- halve it for one-way time */
+			updateLatency(U64.of( (System.currentTimeMillis() - echoSendTime) / 2) );
 		}
 
 		void processOFError(OFErrorMsg m) {
-			logErrorDisconnect(m);
+			logErrorDisconnect(m); 
 		}
 
 		void processOFExperimenter(OFExperimenter m) {
@@ -114,7 +125,7 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 			// we only expect features reply in the WAIT_FEATURES_REPLY state
 			illegalMessageReceived(m);
 		}
-		
+
 		void processOFPortStatus(OFPortStatus m) {
 			unhandledMessageReceived(m);
 		}
@@ -196,15 +207,6 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 		 * @param sw The switch that sent the error
 		 * @param error The error message
 		 */
-		@LogMessageDoc(level="ERROR",
-				message="Error {error type} {error code} from {switch} " +
-						"in state {state}",
-						explanation="The switch responded with an unexpected error" +
-								"to an OpenFlow message from the controller",
-								recommendation="This could indicate improper network operation. " +
-										"If the problem persists restarting the switch and " +
-										"controller may help."
-				)
 		protected void logError(OFErrorMsg error) {
 			log.error("{} from switch {} in state {}",
 					new Object[] {
@@ -260,7 +262,7 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 				case EXPERIMENTER:
 					processOFExperimenter((OFExperimenter)m);
 					break;
-				/* echos can be sent at any time */
+					/* echos can be sent at any time */
 				case ECHO_REPLY:
 					processOFEchoReply((OFEchoReply)m);
 					break;
@@ -315,14 +317,49 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 
 		@Override
 		void processOFHello(OFHello m) throws IOException {
-			OFVersion version = m.getVersion();
-			/* Choose the lower of the two supported versions. */
-			if (version.compareTo(factory.getVersion()) < 0) {
-				factory = OFFactories.getFactory(version);
+			OFVersion theirVersion = m.getVersion();
+			OFVersion commonVersion = null;
+			/* First, check if there's a version bitmap supplied. WE WILL ALWAYS HAVE a controller-provided version bitmap. */
+			if (theirVersion.compareTo(OFVersion.OF_13) >= 0 && !m.getElements().isEmpty()) {
+				List<U32> bitmaps = new ArrayList<U32>();
+				List<OFHelloElem> elements = m.getElements();
+				/* Grab all bitmaps supplied */
+				for (OFHelloElem e : elements) {
+					if (m.getVersion().equals(OFVersion.OF_13) 
+							&& e.getType() == OFHelloElemTypeSerializerVer13.VERSIONBITMAP_VAL) {
+						bitmaps.addAll(((OFHelloElemVersionbitmap) e).getBitmaps());
+					} else if (m.getVersion().equals(OFVersion.OF_14) 
+							&& e.getType() == OFHelloElemTypeSerializerVer14.VERSIONBITMAP_VAL) {
+						bitmaps.addAll(((OFHelloElemVersionbitmap) e).getBitmaps());
+					}
+				}
+				/* Lookup highest, common supported OpenFlow version */
+				commonVersion = computeOFVersionFromBitmap(bitmaps);
+				if (commonVersion == null) {
+					log.error("Could not negotiate common OpenFlow version for {} with greatest version bitmap algorithm.", channel.getRemoteAddress());
+					channel.disconnect();
+					return;
+				} else {
+					log.info("Negotiated OpenFlow version of {} for {} with greatest version bitmap algorithm.", commonVersion.toString(), channel.getRemoteAddress());
+					factory = OFFactories.getFactory(commonVersion);
+					OFMessageDecoder decoder = pipeline.get(OFMessageDecoder.class);
+					decoder.setVersion(commonVersion);
+				}
+			}
+			/* If there's not a bitmap present, choose the lower of the two supported versions. */
+			else if (theirVersion.compareTo(factory.getVersion()) < 0) {
+				log.info("Negotiated down to switch OpenFlow version of {} for {} using lesser hello header algorithm.", theirVersion.toString(), channel.getRemoteAddress());
+				factory = OFFactories.getFactory(theirVersion);
+				OFMessageDecoder decoder = pipeline.get(OFMessageDecoder.class);
+				decoder.setVersion(theirVersion);
 			} /* else The controller's version is < or = the switch's, so keep original controller factory. */
-			
-			OFMessageDecoder decoder = pipeline.get(OFMessageDecoder.class);
-			decoder.setVersion(version);
+			else if (theirVersion.equals(factory.getVersion())) {
+				log.info("Negotiated equal OpenFlow version of {} for {} using lesser hello header algorithm.", factory.getVersion().toString(), channel.getRemoteAddress());
+			}
+			else {
+				log.info("Negotiated down to controller OpenFlow version of {} for {} using lesser hello header algorithm.", factory.getVersion().toString(), channel.getRemoteAddress());
+			}
+
 			setState(new WaitFeaturesReplyState());
 		}
 
@@ -337,8 +374,7 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 	 * we send capture the features reply.
 	 * Next state is CompleteState
 	 */
-	class WaitFeaturesReplyState extends OFChannelState{
-
+	class WaitFeaturesReplyState extends OFChannelState {
 		WaitFeaturesReplyState() {
 			super(false);
 		}
@@ -346,19 +382,57 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 		void processOFFeaturesReply(OFFeaturesReply  m)
 				throws IOException {
 			featuresReply = m;
+			
+			featuresLatency = (System.currentTimeMillis() - featuresLatency) / 2;
 
 			// Mark handshake as completed
 			setState(new CompleteState());
 
 		}
+
 		@Override
-		void enterState() throws IOException {
-			sendFeaturesRequest();
+		void processOFHello(OFHello m) throws IOException {
+			/*
+			 * Brocade switches send a second hello after
+			 * the controller responds with its hello. This
+			 * might be to confirm the protocol version used,
+			 * but isn't defined in the OF specification.
+			 * 
+			 * We will ignore such hello messages assuming
+			 * the version of the hello is correct according
+			 * to the algorithm in the spec.
+			 * 
+			 * TODO Brocade also sets the XID of this second
+			 * hello as the same XID the controller used.
+			 * Checking for this might help to assure we're
+			 * really dealing with the situation we think
+			 * we are.
+			 */
+			if (m.getVersion().equals(factory.getVersion())) {
+				log.warn("Ignoring second hello from {} in state {}. Might be a Brocade.", channel.getRemoteAddress(), state.toString());
+			} else {
+				super.processOFHello(m); /* Versions don't match as they should; abort */
+			}
 		}
-		
+
 		@Override
 		void processOFPortStatus(OFPortStatus m) {
 			log.warn("Ignoring PORT_STATUS message from {} during OpenFlow channel establishment. Ports will be explicitly queried in a later state.", channel.getRemoteAddress());
+		}
+
+		@Override
+		void enterState() throws IOException {
+			sendFeaturesRequest();
+			featuresLatency = System.currentTimeMillis();
+		}
+
+		@Override
+		void processOFMessage(OFMessage m) throws IOException {
+			if (m.getType().equals(OFType.PACKET_IN)) {
+				log.warn("Ignoring PACKET_IN message from {} during OpenFlow channel establishment.", channel.getRemoteAddress());
+			} else {
+				super.processOFMessage(m);
+			}
 		}
 	};
 
@@ -391,9 +465,12 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 					setAuxChannelIdle();
 				}
 			}
+			
+			connection.updateLatency(U64.of(featuresLatency));
+			echoSendTime = 0;
+			
 			// Notify the connection broker
 			notifyConnectionOpened(connection);
-
 		}
 	};
 
@@ -417,7 +494,9 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 			@Nonnull INewOFConnectionListener newConnectionListener,
 			@Nonnull ChannelPipeline pipeline,
 			@Nonnull IDebugCounterService debugCounters,
-			@Nonnull Timer timer) {
+			@Nonnull Timer timer,
+			@Nonnull List<U32> ofBitmaps,
+			@Nonnull OFFactory defaultFactory) {
 
 		Preconditions.checkNotNull(switchManager, "switchManager");
 		Preconditions.checkNotNull(newConnectionListener, "connectionOpenedListener");
@@ -431,8 +510,43 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 		this.counters = switchManager.getCounters();
 		this.state = new InitState();
 		this.timer = timer;
+		this.ofBitmaps = ofBitmaps;
+		this.factory = defaultFactory;
 
 		log.debug("constructor on OFChannelHandler {}", String.format("%08x", System.identityHashCode(this)));
+	}
+
+	/**
+	 * Determine the highest supported version of OpenFlow in common
+	 * between both our OFVersion bitmap and the switch's.
+	 * 
+	 * @param theirs, the version bitmaps of the switch
+	 * @return the highest OFVersion in common b/t the two
+	 */
+	private OFVersion computeOFVersionFromBitmap(List<U32> theirs) {		
+		Iterator<U32> theirsItr = theirs.iterator();
+		Iterator<U32> oursItr = ofBitmaps.iterator();
+		OFVersion version = null;
+		int pos = 0;
+		int size = 32;
+		while (theirsItr.hasNext() && oursItr.hasNext()) {
+			int t = theirsItr.next().getRaw();
+			int o = oursItr.next().getRaw();
+
+			int common = t & o; /* Narrow down the results to the common bits */
+			for (int i = 0; i < size; i++) { /* Iterate over and locate the 1's */
+				int tmp = common & (1 << i); /* Select the bit of interest, 0-31 */
+				if (tmp != 0) { /* Is the version of this bit in common? */
+					for (OFVersion v : OFVersion.values()) { /* Which version does this bit represent? */
+						if (v.getWireVersion() == i + (size * pos)) {
+							version = v;
+						}
+					}
+				}
+			}
+			pos++; /* OFVersion position. 1-31 = 1, 32 - 63 = 2, etc. Inc at end so it starts at 0. */
+		}
+		return version;
 	}
 
 	/**
@@ -474,9 +588,6 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 	}
 
 	@Override
-	@LogMessageDoc(message="New switch connection from {ip address}",
-	explanation="A new switch has connected from the " +
-			"specified IP address")
 	public void channelConnected(ChannelHandlerContext ctx,
 			ChannelStateEvent e) throws Exception {
 		log.debug("channelConnected on OFChannelHandler {}", String.format("%08x", System.identityHashCode(this)));
@@ -488,8 +599,6 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 	}
 
 	@Override
-	@LogMessageDoc(message="Disconnected switch {switch information}",
-	explanation="The specified switch has disconnected.")
 	public void channelDisconnected(ChannelHandlerContext ctx,
 			ChannelStateEvent e) throws Exception {
 		// Only handle cleanup connection is even known
@@ -503,47 +612,6 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 	}
 
 	@Override
-	@LogMessageDocs({
-		@LogMessageDoc(level="ERROR",
-				message="Disconnecting switch {switch} due to read timeout",
-				explanation="The connected switch has failed to send any " +
-						"messages or respond to echo requests",
-						recommendation=LogMessageDoc.CHECK_SWITCH),
-						@LogMessageDoc(level="ERROR",
-						message="Disconnecting switch {switch}: failed to " +
-								"complete handshake",
-								explanation="The switch did not respond correctly " +
-										"to handshake messages",
-										recommendation=LogMessageDoc.CHECK_SWITCH),
-										@LogMessageDoc(level="ERROR",
-										message="Disconnecting switch {switch} due to IO Error: {}",
-										explanation="There was an error communicating with the switch",
-										recommendation=LogMessageDoc.CHECK_SWITCH),
-										@LogMessageDoc(level="ERROR",
-										message="Disconnecting switch {switch} due to switch " +
-												"state error: {error}",
-												explanation="The switch sent an unexpected message",
-												recommendation=LogMessageDoc.CHECK_SWITCH),
-												@LogMessageDoc(level="ERROR",
-												message="Disconnecting switch {switch} due to " +
-														"message parse failure",
-														explanation="Could not parse a message from the switch",
-														recommendation=LogMessageDoc.CHECK_SWITCH),
-														@LogMessageDoc(level="ERROR",
-														message="Terminating controller due to storage exception",
-														explanation=Controller.ERROR_DATABASE,
-														recommendation=LogMessageDoc.CHECK_CONTROLLER),
-														@LogMessageDoc(level="ERROR",
-														message="Could not process message: queue full",
-														explanation="OpenFlow messages are arriving faster than " +
-																" the controller can process them.",
-																recommendation=LogMessageDoc.CHECK_CONTROLLER),
-																@LogMessageDoc(level="ERROR",
-																message="Error while processing message " +
-																		"from switch {switch} {cause}",
-																		explanation="An error occurred processing the switch message",
-																		recommendation=LogMessageDoc.GENERIC_ACTION)
-	})
 	public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e)
 			throws Exception {
 		if (e.getCause() instanceof ReadTimeoutException) {
@@ -612,7 +680,7 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 			log.warn("Could not process message: queue full");
 			counters.rejectedExecutionException.increment();
 		} else if (e.getCause() instanceof IllegalArgumentException) {
-			log.error("Could not decode OpenFlow protocol version from switch {}. Perhaps the switch is trying to use SSL and the controller is not (or vice versa)? {}", getConnectionInfoString(), e.getCause());
+			log.error("Illegal argument exception with switch {}. {}", getConnectionInfoString(), e.getCause());
 			counters.switchSslConfigurationError.increment();
 			ctx.getChannel().close();
 		} else {
@@ -748,19 +816,31 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 	 */
 	private void sendHelloMessage() throws IOException {
 		// Send initial hello message
-		// FIXME:LOJI: Haven't negotiated version yet, assume 1.3
-		OFHello.Builder builder = factory.buildHello()
-				.setXid(handshakeTransactionIds--);
-		// FIXME: Need to add code here to set the version bitmap hello element
-		OFHello m = builder.build();
+
+		OFHello.Builder builder = factory.buildHello();
+
+		/* Our highest-configured OFVersion does support version bitmaps, so include it */
+		if (factory.getVersion().compareTo(OFVersion.OF_13) >= 0) {
+			List<OFHelloElem> he = new ArrayList<OFHelloElem>();
+			he.add(factory.buildHelloElemVersionbitmap()
+					.setBitmaps(ofBitmaps)
+					.build());
+			builder.setElements(he);
+		}
+
+		OFHello m = builder.setXid(handshakeTransactionIds--)
+				.build();
+		
 		channel.write(Collections.singletonList(m));
-		log.debug("Send hello: {}", m);
+		log.debug("Send hello: {}", m); 
 	}
 
 	private void sendEchoRequest() {
 		OFEchoRequest request = factory.buildEchoRequest()
 				.setXid(handshakeTransactionIds--)
 				.build();
+		/* Record for latency calculation */
+		echoSendTime = System.currentTimeMillis();
 		channel.write(Collections.singletonList(request));
 	}
 
@@ -784,4 +864,9 @@ class OFChannelHandler extends IdleStateAwareChannelHandler {
 		return this.pipeline;
 	}
 
+	private void updateLatency(U64 latency) {
+		if (connection != null) {
+			connection.updateLatency(latency);
+		}
+	}
 }

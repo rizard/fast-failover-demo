@@ -2,80 +2,28 @@ package net.floodlightcontroller.testmodule;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 
-import org.projectfloodlight.openflow.protocol.OFFactories;
 import org.projectfloodlight.openflow.protocol.OFFactory;
-import org.projectfloodlight.openflow.protocol.OFFlowAdd;
 import org.projectfloodlight.openflow.protocol.OFFlowMod;
-import org.projectfloodlight.openflow.protocol.OFMeterBandStats;
-import org.projectfloodlight.openflow.protocol.OFMeterBandType;
-import org.projectfloodlight.openflow.protocol.OFMeterConfig;
-import org.projectfloodlight.openflow.protocol.OFMeterMod;
-import org.projectfloodlight.openflow.protocol.OFMeterModCommand;
-import org.projectfloodlight.openflow.protocol.OFMeterStatsRequest;
-import org.projectfloodlight.openflow.protocol.OFOxmClass;
 import org.projectfloodlight.openflow.protocol.OFPortDesc;
-import org.projectfloodlight.openflow.protocol.OFSetConfig;
-import org.projectfloodlight.openflow.protocol.OFTableConfig;
-import org.projectfloodlight.openflow.protocol.OFTableFeaturePropWriteActions;
-import org.projectfloodlight.openflow.protocol.OFTableFeaturePropWriteSetfield;
-import org.projectfloodlight.openflow.protocol.OFTableMod;
-import org.projectfloodlight.openflow.protocol.OFTableModProp;
-import org.projectfloodlight.openflow.protocol.OFTableModPropEviction;
-import org.projectfloodlight.openflow.protocol.OFTableModPropEvictionFlag;
-import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
-import org.projectfloodlight.openflow.protocol.action.OFActionOutput;
 import org.projectfloodlight.openflow.protocol.action.OFActionPushVlan;
 import org.projectfloodlight.openflow.protocol.action.OFActionSetField;
-import org.projectfloodlight.openflow.protocol.action.OFActionSetNwSrc;
 import org.projectfloodlight.openflow.protocol.action.OFActions;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstruction;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstructionApplyActions;
-import org.projectfloodlight.openflow.protocol.instruction.OFInstructionClearActions;
-import org.projectfloodlight.openflow.protocol.instruction.OFInstructionExperimenter;
-import org.projectfloodlight.openflow.protocol.instruction.OFInstructionGotoTable;
-import org.projectfloodlight.openflow.protocol.instruction.OFInstructionMeter;
-import org.projectfloodlight.openflow.protocol.instruction.OFInstructionWriteActions;
 import org.projectfloodlight.openflow.protocol.instruction.OFInstructions;
 import org.projectfloodlight.openflow.protocol.match.Match;
 import org.projectfloodlight.openflow.protocol.match.MatchField;
-import org.projectfloodlight.openflow.protocol.meterband.OFMeterBand;
-import org.projectfloodlight.openflow.protocol.meterband.OFMeterBandDrop;
-import org.projectfloodlight.openflow.protocol.oxm.OFOxm;
-import org.projectfloodlight.openflow.protocol.oxm.OFOxmEthSrc;
 import org.projectfloodlight.openflow.protocol.oxm.OFOxms;
-import org.projectfloodlight.openflow.protocol.ver13.OFMeterModCommandSerializerVer13;
-import org.projectfloodlight.openflow.types.ArpOpcode;
 import org.projectfloodlight.openflow.types.DatapathId;
 import org.projectfloodlight.openflow.types.EthType;
-import org.projectfloodlight.openflow.types.ICMPv4Code;
-import org.projectfloodlight.openflow.types.ICMPv4Type;
-import org.projectfloodlight.openflow.types.IPv4Address;
-import org.projectfloodlight.openflow.types.IpDscp;
-import org.projectfloodlight.openflow.types.IpEcn;
-import org.projectfloodlight.openflow.types.IpProtocol;
 import org.projectfloodlight.openflow.types.MacAddress;
-import org.projectfloodlight.openflow.types.OFBufferId;
-import org.projectfloodlight.openflow.types.OFMetadata;
 import org.projectfloodlight.openflow.types.OFPort;
-import org.projectfloodlight.openflow.types.OFValueType;
 import org.projectfloodlight.openflow.types.OFVlanVidMatch;
-import org.projectfloodlight.openflow.types.TableId;
-import org.projectfloodlight.openflow.types.TransportPort;
-import org.projectfloodlight.openflow.types.U32;
-import org.projectfloodlight.openflow.types.U64;
-import org.projectfloodlight.openflow.types.U8;
-import org.projectfloodlight.openflow.types.VlanPcp;
-import org.projectfloodlight.openflow.types.VlanVid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.google.common.collect.ImmutableList;
 
 import net.floodlightcontroller.core.IOFSwitchListener;
 import net.floodlightcontroller.core.PortChangeType;
@@ -140,6 +88,20 @@ public class TestModule implements IFloodlightModule, IOFSwitchListener {
 		fab.setBufferId(OFBufferId.NO_BUFFER);
 		if (switchId.equals(DatapathId.of(1)))
 		switchService.getSwitch(switchId).write(fab.build());*/
+		
+		/*OFMeterStatsRequest req;
+		ListenableFuture<OFMeterStatsReply> reply = switchService.getActiveSwitch(switchId).writeRequest(req);
+		try {
+			for (OFMeterStats entry : reply.get().getEntries()) {
+				U64 byteInCount = entry.getByteInCount();
+				for (OFMeterBandStats mbs : entry.getBandStats()) {
+					U64 byteBandCount = mbs.getByteBandCount();
+					U64 pktBandCount = mbs.getPacketBandCount();
+				}
+			}
+		} catch (InterruptedException | ExecutionException e) {
+			e.printStackTrace();
+		}*/
 		
 		OFFactory f =factory;
         Match.Builder mb =f.buildMatch();
